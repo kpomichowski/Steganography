@@ -2,7 +2,6 @@
 
 import os
 import argparse
-import re
 import numpy as np
 import numpy.typing as npt
 import datetime
@@ -16,9 +15,13 @@ def print_decoded_message(image: List[Image.Image], decoded_string: str) -> None
   print(
   f"""
     [{datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] Decoding image content.
-    [INFO] Image size: {image.size}; possible encoded bytes: {image.size[0] * image.size[1]}.
-    [INFO] Decoded text:\n
-    \t{decoded_string}
+    [INFO] Image size: {image.size}; possible encoded bytes: {(image.size[0] * image.size[1]) * 3 // 8}.
+    [INFO] Decoded text:
+    \t
+    ```
+      {decoded_string}
+
+    ```
   """
   )
 
@@ -69,13 +72,12 @@ class Validator:
   @staticmethod
   def validate_bytes(cls, image: List[Image.Image], text: str):
     w, h = image.size
-    if w * h < len(text):
+    if (w * h) * 3 // 8 < len(text):
       raise ValidationError(
-        f"Text is too long: Available bytes: {w * h}, Image bytes: {len(text)}",
+        f"Text is too long: Available bytes: {(w * h) * 3 // 8}, Image bytes: {len(text)}",
         cls.BYTES_ERROR,
       )
 
-  # TODO: do validaiton on text image.
   @staticmethod
   def validate_text(cls, text: str):
 
@@ -141,36 +143,27 @@ class TextLSB:
   def __encode(self, image: List[Image.Image], text: str):
     rgb_channels = self.__rgb_to_binary(image)
     ascii_codes = "".join(self.__ascii_to_binary(text=text))
-    index = 0
-    for count, (rgb_bin, ascii_bit) in enumerate(
-      zip_longest(
-          (bin_ for channel in rgb_channels for bin_ in channel), ascii_codes
-      ),
-      start=0,
-    ):
 
-      if count % 3 == 0 and count != 0:
+    lsb_bits, index = [], 0
+    total_bits = len(ascii_codes)
+    for r, g, b in rgb_channels:
+
+      if index < total_bits:
+        lsb_r = r[:-1] + ascii_codes[index]
+        index += 1
+      if index < total_bits:
+        lsb_g = g[:-1] + ascii_codes[index]
+        index += 1
+      if index < total_bits:
+        lsb_b = b[:-1] + ascii_codes[index]
         index += 1
 
-      if ascii_bit != None and rgb_bin != None:
-
-        if ascii_bit == rgb_bin[-1]:
-          continue
-
-        lsb_rgb = re.sub(r".$", ascii_bit, rgb_bin)
-
-        try:
-          # LSB replace
-          rgb_channel = list(rgb_channels[index])
-          rgb_channel[rgb_channel.index(rgb_bin)] = lsb_rgb
-          rgb_channels[index] = tuple(rgb_channel)
-        except IndexError as e:
-          print(e)
-
+      if index <= total_bits:
+        lsb_bits.append((lsb_r, lsb_g, lsb_b))
       else:
         break
 
-    rgb_channels = list(map(self.__binary_to_int, rgb_channels))
+    rgb_channels = list(map(self.__binary_to_int, lsb_bits))
     return rgb_channels
 
   def decode(self, image: List[Image.Image]):
