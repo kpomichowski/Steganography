@@ -5,10 +5,22 @@ import argparse
 import re
 import numpy as np
 import numpy.typing as npt
+import datetime
 from itertools import zip_longest
 from typing import List
 from PIL import Image
 from pathlib import Path
+
+
+def print_decoded_message(image: List[Image.Image], decoded_string: str) -> None:
+  print(
+  f"""
+    [{datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] Decoding image content.
+    [INFO] Image size: {image.size}; possible encoded bytes: {image.size[0] * image.size[1]}.
+    [INFO] Decoded text:\n
+    \t{decoded_string}
+  """
+  )
 
 
 class ValidationError(ValueError):
@@ -77,23 +89,25 @@ class Validator:
 class ImageManager:
   __validator = Validator()
 
-  def __init__(self, path: str, path_: str):
+  def __init__(self, path: str):
     # Validate the image path
     self.__validator.validate_image_path(ErrorCodes, path, mode="read")
     self.image_path = path
-    self.__validator.validate_image_path(ErrorCodes, path_, mode="save")
-    self.output_path = path_
 
   def __load_image(self) -> List[Image.Image]:
     return Image.open(self.image_path)
 
   def load_image(self) -> List[Image.Image]:
-    return self.convert_image(self.__load_image(), mode="rgb")
+    image = self.__load_image()
+    if image.mode != "RGB":
+      image = self.convert_image(image, mode='rgb')
+    return image
 
-  def save_image(self, input_image: List[Image.Image], rgb: list) -> None:
+  def save_image(self, path: str, input_image: List[Image.Image], rgb: list) -> None:
+    self.__validator.validate_image_path(ErrorCodes, path, mode="save")
     output_image = Image.new(input_image.mode, input_image.size)
     output_image.putdata(rgb)
-    output_image.save(self.output_path)
+    output_image.save(path)
 
   def __convert(
       self, image: List[Image.Image], mode: str = "rgb"
@@ -123,14 +137,10 @@ class TextLSB:
     self.validator.validate_text(ErrorCodes, text)
     return self.__encode(image, text=text)
 
-  def decode(image: List[Image.Image]):
-    # TODO: Create decoding image
-    ...
 
   def __encode(self, image: List[Image.Image], text: str):
     rgb_channels = self.__rgb_to_binary(image)
     ascii_codes = "".join(self.__ascii_to_binary(text=text))
-
     index = 0
     for count, (rgb_bin, ascii_bit) in enumerate(
       zip_longest(
@@ -150,6 +160,7 @@ class TextLSB:
         lsb_rgb = re.sub(r".$", ascii_bit, rgb_bin)
 
         try:
+          # LSB replace
           rgb_channel = list(rgb_channels[index])
           rgb_channel[rgb_channel.index(rgb_bin)] = lsb_rgb
           rgb_channels[index] = tuple(rgb_channel)
@@ -162,6 +173,18 @@ class TextLSB:
     rgb_channels = list(map(self.__binary_to_int, rgb_channels))
     return rgb_channels
 
+  def decode(self, image: List[Image.Image]):
+    decoded_message = self.__decode(image)
+    return decoded_message
+
+  def __decode(self, image: List[Image.Image]):
+    rgb_binary = self.__rgb_to_binary(image)
+    binary = "".join((binary[-1] for channel in rgb_binary for binary in channel))
+    chunks, chunk_size = len(binary), 8
+    bytes_ = [binary[i: i + chunk_size] for i in range(0, chunks, chunk_size)]
+    decoded_string = "".join([chr(int(byte, 2)) for byte in bytes_]).partition('-----')[0]
+    return decoded_string
+
   def __binary_to_int(self, rgb: tuple) -> tuple:
     r, g, b = rgb
     return int(r, 2), int(g, 2), int(b, 2)
@@ -170,6 +193,8 @@ class TextLSB:
     return f"{pixel:08b}"
 
   def __text_to_ascii(self, text: str):
+    # specified deilimeter
+    text += '-----'
     return list(map(ord, text))
 
   def __rgb_to_binary(self, image: List[Image.Image]):
@@ -197,18 +222,27 @@ def main():
   parser = argparse.ArgumentParser(description="Little tool for steganography.")
   parser.add_argument("--input", type=str, help="Input image destination")
   parser.add_argument(
-      "--output", type=str, help="Destination folder to save processed image."
+    "--output", type=str, help="Destination folder to save processed image."
   )
   parser.add_argument(
-      "--text", type=str, help="Text content to encode within the image."
+    "--text", type=str, help="Encode text content within an image."
+  )
+  # decoding text from an image
+  parser.add_argument(
+    '--extract', action='store_true', help='Extract embedded text within an image.'
   )
   args = parser.parse_args()
 
   if hasattr(args, "text") and args.text:
-    manager = ImageManager(args.input, args.output)
+    manager = ImageManager(args.input)
     image = manager.load_image()
     rgb_list = TextLSB().encode(image, text=args.text)
-    manager.save_image(image, rgb_list)
+    manager.save_image(args.output, image, rgb_list)
+  elif hasattr(args, 'extract') and args.extract:
+    manager = ImageManager(args.input)
+    image = manager.load_image()
+    decoded_text = TextLSB().decode(image)
+    print_decoded_message(image, decoded_text)
   else:
     print("...")
 
