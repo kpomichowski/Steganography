@@ -5,7 +5,7 @@ import argparse
 import numpy as np
 import numpy.typing as npt
 import datetime
-from itertools import zip_longest
+import itertools
 from typing import List
 from PIL import Image
 from pathlib import Path
@@ -144,24 +144,17 @@ class TextLSB:
     rgb_channels = self.__rgb_to_binary(image)
     ascii_codes = "".join(self.__ascii_to_binary(text=text))
 
-    lsb_bits, index = [], 0
-    total_bits = len(ascii_codes)
-    for r, g, b in rgb_channels:
+    lsb_bits = []
+    chunk_size = 3
+    bin_ascii_substrings = [ascii_codes[y - chunk_size: y] for y in range(chunk_size, len(ascii_codes) + chunk_size, chunk_size) if ascii_codes[y - chunk_size:y] != '']
 
-      if index < total_bits:
-        lsb_r = r[:-1] + ascii_codes[index]
-        index += 1
-      if index < total_bits:
-        lsb_g = g[:-1] + ascii_codes[index]
-        index += 1
-      if index < total_bits:
-        lsb_b = b[:-1] + ascii_codes[index]
-        index += 1
-
-      if index <= total_bits:
-        lsb_bits.append((lsb_r, lsb_g, lsb_b))
-      else:
-        break
+    for bin_ascii, channel in itertools.zip_longest(bin_ascii_substrings, rgb_channels):
+      if bin_ascii and channel:
+        channel_copy = list(channel)
+        for i in range(len(bin_ascii)):
+          if bin_ascii[i]:
+            channel_copy[i] = channel[i][:-1] + bin_ascii[i]
+        lsb_bits.append(tuple(channel_copy))
 
     rgb_channels = list(map(self.__binary_to_int, lsb_bits))
     return rgb_channels
