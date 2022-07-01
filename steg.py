@@ -148,13 +148,15 @@ class TextLSB:
     chunk_size = 3
     bin_ascii_substrings = [ascii_codes[y - chunk_size: y] for y in range(chunk_size, len(ascii_codes) + chunk_size, chunk_size) if ascii_codes[y - chunk_size:y] != '']
 
-    for bin_ascii, channel in itertools.zip_longest(bin_ascii_substrings, rgb_channels):
+    for shift_index, (bin_ascii, channel) in enumerate(itertools.zip_longest(bin_ascii_substrings, rgb_channels)):
       if bin_ascii and channel:
         channel_copy = list(channel)
         for i in range(len(bin_ascii)):
           if bin_ascii[i]:
             channel_copy[i] = channel[i][:-1] + bin_ascii[i]
         lsb_bits.append(tuple(channel_copy))
+      else:
+        lsb_bits.append(channel)
 
     rgb_channels = list(map(self.__binary_to_int, lsb_bits))
     return rgb_channels
