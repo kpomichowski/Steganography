@@ -59,8 +59,8 @@ class Validator:
     w, h = image.size
     if w * h < len(text):
       raise ValidationError(
-          f"Text is too long: Available bytes: {w * h}, Image bytes: {len(text)}",
-          cls.BYTES_ERROR,
+        f"Text is too long: Available bytes: {w * h}, Image bytes: {len(text)}",
+        cls.BYTES_ERROR,
       )
 
   # TODO: do validaiton on text image.
@@ -142,9 +142,10 @@ class TextLSB:
       if count % 3 == 0 and count != 0:
         index += 1
 
-      if ascii_bit != None:
+      if ascii_bit != None and rgb_bin != None:
+
         if ascii_bit == rgb_bin[-1]:
-            continue
+          continue
 
         lsb_rgb = re.sub(r".$", ascii_bit, rgb_bin)
 
@@ -154,8 +155,9 @@ class TextLSB:
           rgb_channels[index] = tuple(rgb_channel)
         except IndexError as e:
           print(e)
+
       else:
-          break
+        break
 
     rgb_channels = list(map(self.__binary_to_int, rgb_channels))
     return rgb_channels
