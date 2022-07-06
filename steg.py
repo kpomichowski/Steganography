@@ -2,10 +2,12 @@
 
 import os
 import argparse
-import numpy as np
-import numpy.typing as npt
 import datetime
 import itertools
+import time
+import numpy as np
+import numpy.typing as npt
+import secrets
 from typing import List
 from PIL import Image
 from pathlib import Path
@@ -13,16 +15,16 @@ from pathlib import Path
 
 def print_decoded_message(image: List[Image.Image], decoded_string: str) -> None:
   print(
-  f"""
-    [{datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] Decoding image content.
-    [INFO] Image size: {image.size}; possible encoded bytes: {(image.size[0] * image.size[1]) * 3 // 8}.
-    [INFO] Decoded text:
-    \t
-    ```
-      {decoded_string}
+    f"""
+      [{datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] Decoding image content.
+      [INFO] Image size: {image.size}; possible encoded bytes: {(image.size[0] * image.size[1]) * 3 // 8}.
+      [INFO] Decoded text:
+      \t
+      ```
+        {decoded_string}
 
-    ```
-  """
+      ```
+    """
   )
 
 
@@ -47,27 +49,37 @@ class ErrorCodes:
 class Validator:
   @staticmethod
   def validate_image_path(cls, path: str, mode: str = "read"):
+
+    if not path:
+      raise ValidationError(
+        message=f"Path to input image not specified!",
+        error_attribute=cls.PATH_NOT_SPECIFIED,
+      )
+
+    if not os.path.exists(path):
+      raise ValidationError(
+        f"Given path does not exist!", cls.PATH_DOES_NOT_EXIST
+      )
+
     if mode.lower() == "read":
-      if not path:
-        raise ValidationError(
-          message=f"Path to input image not specified!",
-          error_attribute=cls.PATH_NOT_SPECIFIED,
-        )
-      if not os.path.exists(path):
-        raise ValidationError(
-          f"Given path does not exist!", cls.PATH_DOES_NOT_EXIST
-        )
       if not Path(path).is_file():
         raise ValidationError(
           f"Input path does not point to a file image!", cls.NOT_A_FILE
         )
       if not path.endswith(((".png", ".jpg", ".gif", ".jpeg", ".tiff", ".bmp"))):
         raise ValidationError(
-          f"Image has wrong format. (`.png`, `.jpg`, `.gif`, `.jpeg`, `.tiff`, `.bmp` are correct ones!)",
+          f"Wrong format of an input image. Available extensions: (`.png`, `.jpg`, `.gif`, `.jpeg`, `.tiff`, `.bmp` are correct ones!)",
           cls.WRONG_FILE_FORMAT,
         )
     else:
-      ...
+      if not Path(path).is_file() and Path(path).is_dir():
+        filename = secrets.token_hex(4)
+        return filename
+      elif not path.endswith(('.png', '.jpg', '.jpeg', '.tiff')):
+        raise ValidationError(
+          f'Wrong format of an output image. Available extensions: (`.png`, `.jpg`, `.jpeg`, `.tiff`).',
+          cls.WRONG_FILE_FORMAT,
+        )
 
   @staticmethod
   def validate_bytes(cls, image: List[Image.Image], text: str):
@@ -106,10 +118,12 @@ class ImageManager:
     return image
 
   def save_image(self, path: str, input_image: List[Image.Image], rgb: list) -> None:
-    self.__validator.validate_image_path(ErrorCodes, path, mode="save")
+    filename = self.__validator.validate_image_path(ErrorCodes, path, mode="save")
     output_image = Image.new(input_image.mode, input_image.size)
     output_image.putdata(rgb)
-    output_image.save(path)
+    DST_PATH = os.path.join(path, filename + os.path.splitext(self.image_path)[-1]) if filename else ''
+    output_image.save(path) if not filename else output_image.save(DST_PATH)
+
 
   def __convert(
       self, image: List[Image.Image], mode: str = "rgb"
@@ -132,11 +146,11 @@ class TextLSB:
   https://en.wikipedia.org/wiki/Steganography
 """
 
-  validator = Validator()
+  __validator = Validator()
 
   def encode(self, image: List[Image.Image], text: str):
-    self.validator.validate_bytes(ErrorCodes, image, text)
-    self.validator.validate_text(ErrorCodes, text)
+    self.__validator.validate_bytes(ErrorCodes, image, text)
+    self.__validator.validate_text(ErrorCodes, text)
     return self.__encode(image, text=text)
 
 
@@ -148,7 +162,7 @@ class TextLSB:
     chunk_size = 3
     bin_ascii_substrings = [ascii_codes[y - chunk_size: y] for y in range(chunk_size, len(ascii_codes) + chunk_size, chunk_size) if ascii_codes[y - chunk_size:y] != '']
 
-    for shift_index, (bin_ascii, channel) in enumerate(itertools.zip_longest(bin_ascii_substrings, rgb_channels)):
+    for bin_ascii, channel in itertools.zip_longest(bin_ascii_substrings, rgb_channels):
       if bin_ascii and channel:
         channel_copy = list(channel)
         for i in range(len(bin_ascii)):
@@ -202,10 +216,10 @@ class TextLSB:
 
 def main():
   """
-  Parser is responsible for reading input image and saving the processed image in desirable destination path.
-  Steganography tool uses two modes:
-* --text which embeds text fragment into a picture using LSB algorithm (Least Significant Bit),
-...
+    Parser is responsible for reading input image and saving the processed image in desirable destination path.
+    Steganography tool uses two modes:
+      * --text which embeds text fragment into a picture using LSB algorithm (Least Significant Bit),
+      ...
 """
   parser = argparse.ArgumentParser(description="Little tool for steganography.")
   parser.add_argument("--input", type=str, help="Input image destination")
