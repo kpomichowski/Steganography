@@ -1,5 +1,13 @@
 # [Steganography](https://en.wikipedia.org/wiki/Steganography) - little tool for hiding text message within an image!
 
+### Guess! Which image has been encoded?
+
+Image #1 | Image #2
+--- | ---
+![](/images/encoded_lena.png) | ![](/images/lena.png)
+
+<small>The answer is... **#Image #1**!</small>
+
 ### Purpose 
 
 Command line tool for encoding/decoding the message within the pixels of the Image with usage the [LSB algorithm](https://en.wikipedia.org/wiki/Bit_numbering#Bit_significance_and_indexing).
