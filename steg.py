@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 
+from base64 import decode
+from heapq import merge
 import os
 import argparse
 import datetime
 import itertools
-import time
-import numpy as np
-import numpy.typing as npt
 import secrets
 from typing import List, Tuple
 from PIL import Image
@@ -57,12 +56,9 @@ class Validator:
         error_attribute=cls.PATH_NOT_SPECIFIED,
       )
 
-    if not os.path.exists(path):
-      ext = os.path.splitext(path)[-1].lower()
-      if ext not in [".tiff", ".png", ".jpg", ".jpeg"]:
-        raise ValidationError(f"Given path does not exist!", cls.PATH_DOES_NOT_EXIST)
-
     if mode.lower() == "read":
+      if not os.path.exists(path):
+        raise ValidationError(f"Given path does not exist!", cls.PATH_DOES_NOT_EXIST)
       if not Path(path).is_file():
         raise ValidationError(
           f"Input path does not point to a file image!", cls.NOT_A_FILE
@@ -73,6 +69,12 @@ class Validator:
           cls.WRONG_FILE_FORMAT,
         )
     else:
+
+      if not os.path.exists(path):
+        ext = os.path.splitext(path)[-1].lower()
+        if ext not in [".tiff", ".png", ".jpg", ".jpeg"]:
+          raise ValidationError(f"Given path does not exist!", cls.PATH_DOES_NOT_EXIST)
+
       if not Path(path).is_file() and Path(path).is_dir():
         filename = secrets.token_hex(nbytes=4)
         return filename
@@ -100,16 +102,6 @@ class Validator:
         cls.WRONG_CHAR,
       )
 
-  @staticmethod
-  def validate_image_size(
-    cls, input_image: List[Image.Image], _input_image: List[Image.Image]
-  ):
-    if input_image.size < _input_image.size:
-      raise ValidationError(
-        f"Image to be merged must be smaller than the input image. Input size: {input_image.size}, Merge image: {_input_image.size}.",
-        cls.INAPROPERIATE_SIZE,
-      )
-
 
 class ImageManager:
   __validator = Validator()
@@ -130,7 +122,7 @@ class ImageManager:
 
   def save_image(self, path: str, input_image: List[Image.Image], rgb: list) -> None:
     filename = self.__validator.validate_image_path(ErrorCodes, path, mode="save")
-    output_image = Image.new(input_image.mode, input_image.size)
+    output_image = Image.new(input_image.mode, input_image.size, color=(0, 0, 0))
     output_image.putdata(rgb)
     DST_PATH = (
       os.path.join(path, filename + os.path.splitext(self.image_path)[-1])
@@ -217,7 +209,7 @@ class TextLSB:
     ]
     return decoded_string
 
-  def __binary_to_int(self, rgb: tuple) -> tuple:
+  def __binary_to_int(self, rgb: Tuple) -> Tuple:
     r, g, b = rgb
     return int(r, 2), int(g, 2), int(b, 2)
 
@@ -234,7 +226,7 @@ class TextLSB:
         R, G, B - each channel is converted to binary [[R channel in bin],
                                                        [G channel in bin],
                                                        [B channel in bin]]
-    """
+        """
     image = list(image.getdata())
     bin_image = [tuple(map(self.__int_to_binary, channel)) for channel in image]
     return bin_image
@@ -244,36 +236,13 @@ class TextLSB:
     return bin_ascii
 
 
-class ImageMergeSteg:
-
-  __validator = Validator()
-
-  def __int_to_binary(self, rgb_pixels):
-    r, g, b = rgb_pixels
-    return int(r, 2), int(g, 2), int(b, 2)
-
-  def __binary_to_int(self, rgb_pixels):
-    r, g, b = rgb_pixels
-    return f"{r:08b}, {g:08b}, {b:08b}"
-
-  def merge(
-    self, input_image: List[Image.Image], merge_image: List[Image.Image]
-  ) -> List[Image.Image]:
-    return self.__merge(input_image, merge_image)
-
-  def __merge(
-    self, input_image: List[Image.Image], merge_image: List[Image.Image]
-  ) -> List[Image.Image]:
-    return ...
-
-
 def main():
   """
     Parser is responsible for reading input image and saving the processed image in desirable destination path.
     Steganography tool uses two modes:
       * --text which embeds text fragment into a picture using LSB algorithm (Least Significant Bit),
       ...
-  """
+    """
 
   parser = argparse.ArgumentParser(description="Little tool for steganography.")
   parser.add_argument("--input", type=str, help="Input image destination")
@@ -284,9 +253,6 @@ def main():
   # decoding text from an image
   parser.add_argument(
     "--extract", action="store_true", help="Extract embedded text within an image."
-  )
-  parser.add_argument(
-    "--merge", type=str, help="A specific image to be encoded into the input image."
   )
 
   args = parser.parse_args()
@@ -301,11 +267,6 @@ def main():
   elif hasattr(args, "extract") and args.extract:
     decoded_text = TextLSB().decode(image)
     print_decoded_message(image, decoded_text)
-  elif hasattr(args, "merge") and args.merge:
-    image_to_be_merged = ImageManager(args.merge).load_image()
-    rgb_list = ImageMergeSteg().merge(image, image_to_be_merged)
-    manager.save_image(args.output, image, rgb_list)
-    print_saved_image_path(manager, args.output)
 
 
 if __name__ == "__main__":
