@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 
-from base64 import decode
-from heapq import merge
 import os
 import argparse
 import datetime
